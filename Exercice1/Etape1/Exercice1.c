@@ -32,13 +32,12 @@ void *countOccurence(void* arg)
 	*count = 0;
 	while(1)
 	{
-		write(STDOUT_FILENO, "*",1);
-
+		printf("*\n");
 		lseek(fd,i,SEEK_SET);
 		bytes_read = read(fd,buffer, word);
 		if (bytes_read < (ssize_t)word) break;
 
-		if(memcmp(buffer, WORD, word)==0)
+		if(strcmp(buffer, WORD)==0)
 		{
 			(*count)++;
 		}

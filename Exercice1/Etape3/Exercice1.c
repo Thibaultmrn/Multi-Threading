@@ -15,6 +15,48 @@ typedef struct
 	char *word;
 	int tab;
 }ThreadData;
+
+void *countOccurence(void* arg);
+
+int main()
+{
+	pthread_t thread[4];
+    ThreadData threadData[4] = 
+    {
+        {"Serveur.cpp", "break", 0},
+        {"windowclient.cpp", "break", 1},
+        {"Caddie.cpp", "break", 2},
+        {"applichorairewindow.cpp", "break", 3}
+    };
+
+	int *retThread[4], ret;
+	
+	for(int i = 0; i < 4; i++)
+	{
+		if((ret = pthread_create(&thread[i], NULL, countOccurence, &threadData[i]) )!= 0)
+		{
+			printf("Erreur lors de la création du thread %d\n", i + 1);
+			return ret;
+		}
+	}
+
+	for(int i = 0; i<4;i++)
+	{
+		if((ret = pthread_join(thread[i], (void**)&retThread[i]))!=0)
+		{
+			printf("Erreur lors de l'attente du thread %d\n", i + 1);
+			return ret;
+		}
+	}
+
+    for (int i = 0; i < 4; i++) 
+    {
+        printf("\nOccurrences du mot '%s' dans '%s' : %d\n", threadData[i].word, threadData[i].fileName, *retThread[i]);
+        free(retThread[i]);
+    }
+	return 0;
+}
+
 void *countOccurence(void* arg)
 {
 	ThreadData *data = (ThreadData *)arg;
@@ -52,7 +94,7 @@ void *countOccurence(void* arg)
 		bytes_read = read(fd,buffer, word);
 		if (bytes_read < (ssize_t)word) break;
 
-		if(memcmp(buffer, data->word, word)==0)
+		if(strcmp(buffer, data->word)==0)
 		{
 			(*count)++;
 		}
@@ -61,40 +103,4 @@ void *countOccurence(void* arg)
     close(fd);
     pthread_exit(count);
 
-}
-int main()
-{
-	pthread_t thread[4];
-    ThreadData threadData[4] = 
-    {
-        {"Serveur.cpp", "break", 0},
-        {"windowclient.cpp", "break", 1},
-        {"Caddie.cpp", "break", 2},
-        {"applichorairewindow.cpp", "return", 3}
-    };
-	int *retThread[4], ret;
-	for(int i = 0; i < 4; i++)
-	{
-		if((ret = pthread_create(&thread[i], NULL, countOccurence, &threadData[i]) )!= 0)
-		{
-			printf("Erreur lors de la création du thread %d\n", i + 1);
-			return ret;
-		}
-	}
-
-	for(int i = 0; i<4;i++)
-	{
-		if((ret = pthread_join(thread[i], (void**)&retThread[i]))!=0)
-		{
-			printf("Erreur lors de l'attente du thread %d\n", i + 1);
-			return ret;
-		}
-	}
-
-    for (int i = 0; i < 4; i++) 
-    {
-        printf("\nOccurrences du mot '%s' dans '%s' : %d\n", threadData[i].word, threadData[i].fileName, *retThread[i]);
-        free(retThread[i]);
-    }
-	return 0;
 }
