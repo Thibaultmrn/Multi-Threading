@@ -16,17 +16,17 @@ typedef struct
 	int tab;
 }ThreadData;
 
-void *countOccurence(void* arg);
+void *countOccurence(void* param);
 
 int main()
 {
 	pthread_t thread[4];
     ThreadData threadData[4] = 
     {
-        {"Serveur.cpp", "break", 0},
-        {"windowclient.cpp", "break", 1},
-        {"Caddie.cpp", "break", 2},
-        {"applichorairewindow.cpp", "break", 3}
+        "Serveur.cpp", "break", 0,
+        "windowclient.cpp", "break", 1,
+        "Caddie.cpp", "break", 2,
+        "applichorairewindow.cpp", "break", 3
     };
 
 	int *retThread[4], ret;
@@ -57,42 +57,47 @@ int main()
 	return 0;
 }
 
-void *countOccurence(void* arg)
+void *countOccurence(void* param)
 {
-	ThreadData *data = (ThreadData *)arg;
+	ThreadData *data = (ThreadData *)param;
 
-	int fd;
-	if((fd = open(data->fileName,O_RDONLY)) == -1)
-	{
-		printf("Erreur lors de l'ouverture du fichier\n");
-		pthread_exit(NULL);
-	}
+
 
 	size_t word = strlen(data->word);
 	char buffer[word + 1];
 	buffer[word] = '\0';
 	
-	off_t i = 0;
+	int i = 0;
 	ssize_t bytes_read;
 	int *count = malloc(sizeof(int));
 	if (count == NULL) 
 	{
         printf("Erreur d'allocation mémoire");
-        close(fd);
         pthread_exit(NULL);
     }
 	*count = 0;
 	while(1)
 	{
-	    for (int i = 0; i < data->tab; i++) 
+		int fd;
+		if((fd = open(data->fileName,O_RDONLY)) == -1)
+		{
+			printf("Erreur lors de l'ouverture du fichier\n");
+			pthread_exit(NULL);
+		}
+
+		for (int i = 0; i < data->tab; i++) 
 	    {
         	printf("\t");
     	}
 
 		printf("*\n");
+
+
 		lseek(fd,i,SEEK_SET);
 		bytes_read = read(fd,buffer, word);
-		if (bytes_read < (ssize_t)word) break;
+		close(fd);
+
+		if (bytes_read < (ssize_t)word)break;
 
 		if(strcmp(buffer, data->word)==0)
 		{
@@ -100,7 +105,6 @@ void *countOccurence(void* arg)
 		}
 		i++;
 	}
-    close(fd);
-    pthread_exit(count);
 
+    pthread_exit(count);
 }

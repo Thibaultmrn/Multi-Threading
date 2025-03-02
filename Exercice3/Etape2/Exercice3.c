@@ -31,7 +31,7 @@ int main()
     {
         pthread_mutex_lock(&mutexParam); 
         memcpy(&Param, &data[i], sizeof(DONNEE));
-        pthread_mutex_unlock(&mutexParam);
+ 
         pthread_create(&threads[i],NULL, fctThread, (void*)&Param);
     }
 
@@ -56,7 +56,7 @@ void* fctThread(void* param)
     struct timespec ts;
     ts.tv_sec = info->nbSecondes;
     ts.tv_nsec = 0;
-
+    pthread_mutex_unlock(&mutexParam);
     nanosleep(&ts, NULL);
 
     printf("Thread %d.%u se termine\n", pid,tid);

@@ -43,17 +43,19 @@ int main()
     pthread_cond_init(&condCompteur, NULL);
     pthread_key_create(&cle, destructeur);
 
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGINT);
-    sigprocmask(SIG_SETMASK, &mask, NULL);
+
 
     for(int i=0; i < 4; i++)
     {
-        pthread_mutex_lock(&mutexParam); 
+        pthread_mutex_lock(&mutexParam);
         memcpy(&Param, &data[i], sizeof(DONNEE));
-        pthread_mutex_unlock(&mutexParam);
+
         pthread_create(&threads[i],NULL, fctThread, (void*)&Param);
     }
+    
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigprocmask(SIG_SETMASK, &mask, NULL);
 
     pthread_mutex_lock(&mutexCompteur);
     while(compteur >0)
@@ -91,7 +93,7 @@ void* fctThread(void* param)
     struct timespec ts;
     ts.tv_sec = info->nbSecondes;
     ts.tv_nsec = 0;
-
+    pthread_mutex_unlock(&mutexParam);
     nanosleep(&ts, NULL);
 
     printf("Thread %d.%u se termine\n", pid,tid);
