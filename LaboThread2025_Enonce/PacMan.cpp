@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
+#include <setjmp.h>
 #include "GrilleSDL.h"
 #include "Ressources.h"
 
@@ -41,6 +42,11 @@ S_CASE tab[NB_LIGNE][NB_COLONNE];
 int L = 15, C = 8, dir = GAUCHE;
 
 pthread_mutex_t mutexParam;
+pthread_mutex_t mutexNbPacGom;
+pthread_mutex_t mutexDelai;
+pthread_cond_t condNbPacGom;
+int nbPacGom = 0, level = 1, delai = 300, score = 0; 
+sigjmp_buf contexte;
 struct sigaction sigAct;
 
 void DessineGrilleBase();
@@ -48,6 +54,7 @@ void Attente(int milli);
 void setTab(int l, int c, int presence = VIDE, pthread_t tid = 0);
 void* fctThreadPacMan(void* param);
 void* fctThreadEvent(void* param);
+void* fctThreadPacGom(void* param);
 void handler_signal(int sig);
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 int main(int argc,char* argv[])
@@ -56,11 +63,15 @@ int main(int argc,char* argv[])
   sigset_t mask;
   struct sigaction sigAct;
   char ok;
-  pthread_t threadPacMan, threadEvent;
+  pthread_t threadPacMan, threadEvent, threadPacGom;
   int ret;
 
   srand((unsigned)time(NULL));
   pthread_mutex_init(&mutexParam, NULL);
+  pthread_mutex_init(&mutexNbPacGom, NULL);
+  pthread_mutex_init(&mutexDelai, NULL);
+  pthread_cond_init(&condNbPacGom, NULL);
+
 
   // Ouverture de la fenetre graphique
   printf("(MAIN%p) Ouverture de la fenetre graphique\n",pthread_self()); fflush(stdout);
@@ -72,6 +83,7 @@ int main(int argc,char* argv[])
   }
 
   DessineGrilleBase();
+  DessineChiffre(14, 22, level);
 
   sigemptyset(&sigAct.sa_mask);
   sigAct.sa_handler = handler_signal;
@@ -83,17 +95,18 @@ int main(int argc,char* argv[])
   // Exemple d'utilisation de GrilleSDL et Ressources --> code a supprimer
  // DessinePacMan(17,7,GAUCHE);  // Attention !!! tab n'est pas modifie --> a vous de le faire !!!
   /*DessineChiffre(14,25,9);
-  DessineFantome(5,9,ROUGE,DROITE);
+  /*DessineFantome(5,9,ROUGE,DROITE);
   DessinePacGom(7,4);
   DessineSuperPacGom(9,5);
   DessineFantomeComestible(13,15);
   DessineBonus(5,15);*/
+  pthread_create(&threadPacGom,NULL,fctThreadPacGom, NULL);
   pthread_create(&threadPacMan,NULL,fctThreadPacMan,NULL);
   pthread_create(&threadEvent,NULL,fctThreadEvent,&threadPacMan);
 
   pthread_join(threadEvent,NULL);
   //pthread_join(threadPacMan,NULL);
-
+  //pthread_join(threadPacGom,NULL);
   ok = 0;
   while(!ok)
   {
@@ -186,11 +199,16 @@ void* fctThreadPacMan(void* param)
     sigaddset(&mask, SIGUSR1);
     sigaddset(&mask, SIGUSR2);
 
+    sigprocmask(SIG_BLOCK, &mask, &oldmask);
+    pthread_mutex_lock(&mutexDelai);
+    Attente(delai);
+    pthread_mutex_unlock(&mutexDelai);
+    sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
     sigprocmask(SIG_BLOCK, &mask, &oldmask);
     pthread_mutex_lock(&mutexParam);
-    setTab(L, C, VIDE);
-    EffaceCarre(L, C);
+    //setTab(L, C, VIDE);
+    //
 
     int newC = C, newL = L;
     switch(dir)
@@ -216,8 +234,27 @@ void* fctThreadPacMan(void* param)
     {
       if (tab[newL][newC].presence != MUR) 
       {
+        EffaceCarre(L, C);
         L = newL;
         C = newC;
+        if(tab[L][C].presence == PACGOM || tab[L][C].presence == SUPERPACGOM)
+        {
+          pthread_mutex_lock(&mutexNbPacGom);
+          nbPacGom--;  // Décrémenter le nombre de pac-goms
+          pthread_cond_signal(&condNbPacGom); // Réveiller threadPacGom
+          pthread_mutex_unlock(&mutexNbPacGom);
+
+          if(tab[L][C].presence == PACGOM )
+          {
+            score++;
+          }
+          else
+          {
+            score += 5;
+          }
+
+          tab[L][C].presence = VIDE;
+        }
       }
     }
     setTab(L, C, PACMAN, pthread_self());
@@ -226,9 +263,6 @@ void* fctThreadPacMan(void* param)
     pthread_mutex_unlock(&mutexParam);
     sigprocmask(SIG_SETMASK, &oldmask, NULL);
     
-    sigprocmask(SIG_BLOCK, &mask, &oldmask);
-    Attente(300);
-    sigprocmask(SIG_SETMASK, &oldmask, NULL);
   }
 
 }
@@ -244,6 +278,7 @@ void* fctThreadEvent(void* param)
 
     if(event.type == CROIX)
     {
+      pthread_cancel(pacman_tid);  // Arrêter le thread PacMan
       pthread_exit(NULL);
     }
     if(event.type == CLAVIER)
@@ -273,16 +308,101 @@ void handler_signal(int sig)
   switch(sig) 
   {
     case SIGINT:  
-    dir = GAUCHE; 
+    if(tab[L][C-1].presence != MUR)
+    {
+      dir = GAUCHE; 
+    }
     break;
+
     case SIGHUP:  
-    dir = DROITE; 
+    if(tab[L][C+1].presence != MUR)
+    {
+      dir = DROITE;
+    }
     break;
+
     case SIGUSR1: 
-    dir = HAUT; 
+    if(tab[L-1][C].presence != MUR)
+    {
+      dir = HAUT; 
+    }
     break;
+
     case SIGUSR2: 
-    dir = BAS; 
+    if(tab[L+1][C].presence != MUR)
+    {
+      dir = BAS;
+    }
     break;
   }
+}
+
+void* fctThreadPacGom(void* param)
+{
+  sigsetjmp(contexte, 1);
+  for(int i = 0; i < NB_LIGNE; i++)
+  {
+    for(int j = 0; j < NB_COLONNE; j++)
+    {
+      if(tab[i][j].presence != MUR)
+      {
+        if((j == 1 && i == 2)||(j == 15 && i == 2)||(j == 1 && i == 15)||(j == 15 && i == 15))
+        {
+          DessineSuperPacGom(i,j);
+          tab[i][j].presence = SUPERPACGOM;
+          pthread_mutex_lock(&mutexNbPacGom);
+          nbPacGom++;
+          pthread_mutex_unlock(&mutexNbPacGom);
+        }
+        else 
+        {
+          if((j != 8 && i != 15) || (j != 8 && i != 8)||(j != 8 && i != 9))
+          {
+            DessinePacGom(i,j);
+            tab[i][j].presence = PACGOM;
+            pthread_mutex_lock(&mutexNbPacGom);
+            nbPacGom++;
+            pthread_mutex_unlock(&mutexNbPacGom);
+          }
+        }
+      }
+
+    }
+  }
+
+  while(1)
+  {
+    pthread_mutex_lock(&mutexNbPacGom);
+    while (nbPacGom > 0) 
+    {
+        int tmp = nbPacGom;
+        DessineChiffre(12, 24, tmp % 10);
+        tmp /= 10;
+        DessineChiffre(12, 23, tmp % 10);
+        tmp /= 10;
+        DessineChiffre(12, 22, tmp % 10);
+      pthread_cond_wait(&condNbPacGom, &mutexNbPacGom);
+      if(nbPacGom == 0)
+      {
+        int tmp = nbPacGom;
+        DessineChiffre(12, 24, tmp % 10);
+        tmp /= 10;
+        DessineChiffre(12, 23, tmp % 10);
+        tmp /= 10;
+        DessineChiffre(12, 22, tmp % 10);
+      }
+    }
+    pthread_mutex_unlock(&mutexNbPacGom);
+    if(nbPacGom == 0)
+    {
+      level ++;
+      DessineChiffre(14, 22, level);
+      pthread_mutex_lock(&mutexDelai);
+      delai /= 2;
+      pthread_mutex_unlock(&mutexDelai);
+      siglongjmp(contexte,1);
+    }
+  }
+
+  return 0;
 }
