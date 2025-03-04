@@ -47,7 +47,8 @@ pthread_mutex_t mutexDelai;
 pthread_mutex_t mutexScore;
 pthread_cond_t condNbPacGom;
 pthread_cond_t condScore;
-int nbPacGom = 0, level = 1, delai = 300, score = 0, MAJScore = false; 
+int nbPacGom = 0, level = 1, delai = 300, score = 0;
+bool MAJScore = false; 
 sigjmp_buf contexte;
 struct sigaction sigAct;
 
@@ -58,6 +59,7 @@ void* fctThreadPacMan(void* param);
 void* fctThreadEvent(void* param);
 void* fctThreadPacGom(void* param);
 void* fctThreadScore(void* param);
+void* fctThreadBonus(void* param);
 void handler_signal(int sig);
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 int main(int argc,char* argv[])
@@ -66,7 +68,7 @@ int main(int argc,char* argv[])
   sigset_t mask;
   struct sigaction sigAct;
   char ok;
-  pthread_t threadPacMan, threadEvent, threadPacGom, threadScore;
+  pthread_t threadPacMan, threadEvent, threadPacGom, threadScore, threadBonus;
   int ret;
 
   srand((unsigned)time(NULL));
@@ -108,6 +110,7 @@ int main(int argc,char* argv[])
   pthread_create(&threadPacGom,NULL,fctThreadPacGom, NULL);
   pthread_create(&threadPacMan,NULL,fctThreadPacMan,NULL);
   pthread_create(&threadScore,NULL,fctThreadScore,NULL);
+  pthread_create(&threadBonus,NULL,fctThreadBonus,NULL);
   pthread_create(&threadEvent,NULL,fctThreadEvent,&threadPacMan);
 
   pthread_join(threadEvent,NULL);
@@ -245,7 +248,7 @@ void* fctThreadPacMan(void* param)
 
         L = newL;
         C = newC;
-        if(tab[L][C].presence == PACGOM || tab[L][C].presence == SUPERPACGOM)
+        if(tab[L][C].presence == PACGOM || tab[L][C].presence == SUPERPACGOM || tab[L][C].presence == BONUS)
         {
           pthread_mutex_lock(&mutexNbPacGom);
           nbPacGom--;  
@@ -261,9 +264,18 @@ void* fctThreadPacMan(void* param)
           }
           else
           {
-            score += 5;
-            MAJScore = true;
-            pthread_cond_signal(&condScore);
+            if(tab[L][C].presence == SUPERPACGOM)
+            {
+              score += 5;
+              MAJScore = true;
+              pthread_cond_signal(&condScore);
+            }
+            else
+            {
+              score += 30;
+              MAJScore = true;
+              pthread_cond_signal(&condScore);
+            }
           }
           pthread_mutex_unlock(&mutexScore);
           tab[L][C].presence = PACMAN;
@@ -452,4 +464,37 @@ void* fctThreadScore(void* param)
     pthread_mutex_unlock(&mutexScore);
   }
   return 0;
+}
+
+void* fctThreadBonus(void* param)
+{
+  while(1)
+  {
+    int attente = 10000 + rand() % 10001;
+    Attente(attente);
+
+    pthread_mutex_lock(&mutexParam);
+
+    int l, c;
+    
+    do 
+    {
+      l = rand() % NB_LIGNE;
+      c = rand() % NB_COLONNE;
+    }while(tab[l][c].presence != VIDE);
+
+    tab[l][c].presence = BONUS;
+    DessineBonus(l,c);
+    pthread_mutex_unlock(&mutexParam);
+
+    Attente(10000);
+
+    pthread_mutex_lock(&mutexParam);
+    if(tab[l][c].presence == BONUS)
+    {
+      tab[l][c].presence = VIDE;
+      EffaceCarre(l, c);
+    }
+    pthread_mutex_unlock(&mutexParam);
+  }
 }
