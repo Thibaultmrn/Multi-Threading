@@ -44,8 +44,10 @@ int L = 15, C = 8, dir = GAUCHE;
 pthread_mutex_t mutexParam;
 pthread_mutex_t mutexNbPacGom;
 pthread_mutex_t mutexDelai;
+pthread_mutex_t mutexScore;
 pthread_cond_t condNbPacGom;
-int nbPacGom = 0, level = 1, delai = 300, score = 0; 
+pthread_cond_t condScore;
+int nbPacGom = 0, level = 1, delai = 300, score = 0, MAJScore = false; 
 sigjmp_buf contexte;
 struct sigaction sigAct;
 
@@ -71,7 +73,9 @@ int main(int argc,char* argv[])
   pthread_mutex_init(&mutexParam, NULL);
   pthread_mutex_init(&mutexNbPacGom, NULL);
   pthread_mutex_init(&mutexDelai, NULL);
+  pthread_mutex_init(&mutexScore, NULL);
   pthread_cond_init(&condNbPacGom, NULL);
+  pthread_cond_init(&condScore, NULL);
 
 
   // Ouverture de la fenetre graphique
@@ -248,14 +252,20 @@ void* fctThreadPacMan(void* param)
           pthread_cond_signal(&condNbPacGom); // Réveiller threadPacGom
           pthread_mutex_unlock(&mutexNbPacGom);
 
+          pthread_mutex_lock(&mutexScore);
           if(tab[L][C].presence == PACGOM )
           {
             score++;
+            MAJScore = true;
+            pthread_cond_signal(&condScore);
           }
           else
           {
             score += 5;
+            MAJScore = true;
+            pthread_cond_signal(&condScore);
           }
+          pthread_mutex_unlock(&mutexScore);
           tab[L][C].presence = PACMAN;
         }
       }
@@ -411,5 +421,35 @@ void* fctThreadPacGom(void* param)
 
   }
 
+  return 0;
+}
+
+void* fctThreadScore(void* param)
+{
+  while(1)
+  {
+    pthread_mutex_lock(&mutexScore);
+
+    while(MAJScore == false)
+    {
+      pthread_cond_wait(&condScore, &mutexScore);
+    }
+
+    int tmpScore = score;
+    pthread_mutex_unlock(&mutexScore);
+
+
+    DessineChiffre(16, 25, tmpScore % 10);
+    tmpScore /= 10;
+    DessineChiffre(16, 24, tmpScore % 10);
+    tmpScore /= 10;
+    DessineChiffre(16, 23, tmpScore % 10);
+    tmpScore /= 10;
+    DessineChiffre(16, 22, tmpScore % 10);
+
+    pthread_mutex_lock(&mutexScore);
+    MAJScore = false;
+    pthread_mutex_unlock(&mutexScore);
+  }
   return 0;
 }
