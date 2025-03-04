@@ -55,6 +55,7 @@ void setTab(int l, int c, int presence = VIDE, pthread_t tid = 0);
 void* fctThreadPacMan(void* param);
 void* fctThreadEvent(void* param);
 void* fctThreadPacGom(void* param);
+void* fctThreadScore(void* param);
 void handler_signal(int sig);
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 int main(int argc,char* argv[])
@@ -63,7 +64,7 @@ int main(int argc,char* argv[])
   sigset_t mask;
   struct sigaction sigAct;
   char ok;
-  pthread_t threadPacMan, threadEvent, threadPacGom;
+  pthread_t threadPacMan, threadEvent, threadPacGom, threadScore;
   int ret;
 
   srand((unsigned)time(NULL));
@@ -102,6 +103,7 @@ int main(int argc,char* argv[])
   DessineBonus(5,15);*/
   pthread_create(&threadPacGom,NULL,fctThreadPacGom, NULL);
   pthread_create(&threadPacMan,NULL,fctThreadPacMan,NULL);
+  pthread_create(&threadScore,NULL,fctThreadScore,NULL);
   pthread_create(&threadEvent,NULL,fctThreadEvent,&threadPacMan);
 
   pthread_join(threadEvent,NULL);
@@ -235,12 +237,14 @@ void* fctThreadPacMan(void* param)
       if (tab[newL][newC].presence != MUR) 
       {
         EffaceCarre(L, C);
+        tab[L][C].presence = VIDE;       
+
         L = newL;
         C = newC;
         if(tab[L][C].presence == PACGOM || tab[L][C].presence == SUPERPACGOM)
         {
           pthread_mutex_lock(&mutexNbPacGom);
-          nbPacGom--;  // Décrémenter le nombre de pac-goms
+          nbPacGom--;  
           pthread_cond_signal(&condNbPacGom); // Réveiller threadPacGom
           pthread_mutex_unlock(&mutexNbPacGom);
 
@@ -252,8 +256,7 @@ void* fctThreadPacMan(void* param)
           {
             score += 5;
           }
-
-          tab[L][C].presence = VIDE;
+          tab[L][C].presence = PACMAN;
         }
       }
     }
@@ -344,7 +347,7 @@ void* fctThreadPacGom(void* param)
   {
     for(int j = 0; j < NB_COLONNE; j++)
     {
-      if(tab[i][j].presence != MUR)
+      if(tab[i][j].presence == VIDE)
       {
         if((j == 1 && i == 2)||(j == 15 && i == 2)||(j == 1 && i == 15)||(j == 15 && i == 15))
         {
@@ -370,29 +373,30 @@ void* fctThreadPacGom(void* param)
     }
   }
 
+  pthread_mutex_lock(&mutexNbPacGom);
+  int tmp = nbPacGom;
+  DessineChiffre(12, 24, tmp % 10);
+  tmp /= 10;
+  DessineChiffre(12, 23, tmp % 10);
+  tmp /= 10;
+  DessineChiffre(12, 22, tmp % 10);
+  pthread_mutex_unlock(&mutexNbPacGom);
+
   while(1)
   {
     pthread_mutex_lock(&mutexNbPacGom);
     while (nbPacGom > 0) 
     {
-        int tmp = nbPacGom;
-        DessineChiffre(12, 24, tmp % 10);
-        tmp /= 10;
-        DessineChiffre(12, 23, tmp % 10);
-        tmp /= 10;
-        DessineChiffre(12, 22, tmp % 10);
+
       pthread_cond_wait(&condNbPacGom, &mutexNbPacGom);
-      if(nbPacGom == 0)
-      {
-        int tmp = nbPacGom;
-        DessineChiffre(12, 24, tmp % 10);
-        tmp /= 10;
-        DessineChiffre(12, 23, tmp % 10);
-        tmp /= 10;
-        DessineChiffre(12, 22, tmp % 10);
-      }
+
+      tmp = nbPacGom;
+      DessineChiffre(12, 24, tmp % 10);
+      tmp /= 10;
+      DessineChiffre(12, 23, tmp % 10);
+      tmp /= 10;
+      DessineChiffre(12, 22, tmp % 10);
     }
-    pthread_mutex_unlock(&mutexNbPacGom);
     if(nbPacGom == 0)
     {
       level ++;
@@ -400,8 +404,11 @@ void* fctThreadPacGom(void* param)
       pthread_mutex_lock(&mutexDelai);
       delai /= 2;
       pthread_mutex_unlock(&mutexDelai);
+      pthread_mutex_unlock(&mutexNbPacGom);
       siglongjmp(contexte,1);
     }
+    pthread_mutex_unlock(&mutexNbPacGom);
+
   }
 
   return 0;
